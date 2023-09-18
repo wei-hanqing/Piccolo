@@ -348,6 +348,34 @@ namespace Piccolo
         color_grading_pass.pDepthStencilAttachment = NULL;
         color_grading_pass.preserveAttachmentCount = 0;
         color_grading_pass.pPreserveAttachments    = NULL;
+        // vignette
+        VkAttachmentReference vignette_pass_input_attachment_reference {};
+        vignette_pass_input_attachment_reference.attachment =
+            &backup_odd_color_attachment_description - attachments;
+        vignette_pass_input_attachment_reference.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        VkAttachmentReference vignette_pass_color_attachment_reference {};
+        if (m_enable_fxaa)
+        {
+            vignette_pass_color_attachment_reference.attachment =
+                &post_process_even_color_attachment_description - attachments;
+        }
+        else
+        {
+            vignette_pass_color_attachment_reference.attachment =
+                &backup_even_color_attachment_description - attachments;
+        }
+        vignette_pass_color_attachment_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription& vignette_pass   = subpasses[_main_camera_subpass_vignette];
+        vignette_pass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        vignette_pass.inputAttachmentCount    = 1;
+        vignette_pass.pInputAttachments       = &vignette_pass_input_attachment_reference;
+        vignette_pass.colorAttachmentCount    = 1;
+        vignette_pass.pColorAttachments       = &vignette_pass_color_attachment_reference;
+        vignette_pass.pDepthStencilAttachment = NULL;
+        vignette_pass.preserveAttachmentCount = 0;
+        vignette_pass.pPreserveAttachments    = NULL;
 
         VkAttachmentReference fxaa_pass_input_attachment_reference {};
         if (m_enable_fxaa)
@@ -377,10 +405,10 @@ namespace Piccolo
         fxaa_pass.pPreserveAttachments    = NULL;
 
         VkAttachmentReference ui_pass_color_attachment_reference {};
-        ui_pass_color_attachment_reference.attachment = &backup_even_color_attachment_description - attachments;
+        ui_pass_color_attachment_reference.attachment = &backup_odd_color_attachment_description - attachments;
         ui_pass_color_attachment_reference.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        uint32_t ui_pass_preserve_attachment = &backup_odd_color_attachment_description - attachments;
+        uint32_t ui_pass_preserve_attachment = &backup_even_color_attachment_description - attachments;
 
         VkSubpassDescription& ui_pass   = subpasses[_main_camera_subpass_ui];
         ui_pass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -394,10 +422,10 @@ namespace Piccolo
 
         VkAttachmentReference combine_ui_pass_input_attachments_reference[2] = {};
         combine_ui_pass_input_attachments_reference[0].attachment =
-            &backup_odd_color_attachment_description - attachments;
+            &backup_even_color_attachment_description - attachments;
         combine_ui_pass_input_attachments_reference[0].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         combine_ui_pass_input_attachments_reference[1].attachment =
-            &backup_even_color_attachment_description - attachments;
+            &backup_odd_color_attachment_description - attachments;
         combine_ui_pass_input_attachments_reference[1].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
         VkAttachmentReference combine_ui_pass_color_attachment_reference {};
@@ -415,7 +443,7 @@ namespace Piccolo
         combine_ui_pass.preserveAttachmentCount = 0;
         combine_ui_pass.pPreserveAttachments    = NULL;
 
-        VkSubpassDependency dependencies[8] = {};
+        VkSubpassDependency dependencies[9] = {};
 
         VkSubpassDependency& deferred_lighting_pass_depend_on_shadow_map_pass = dependencies[0];
         deferred_lighting_pass_depend_on_shadow_map_pass.srcSubpass           = VK_SUBPASS_EXTERNAL;
@@ -478,19 +506,33 @@ namespace Piccolo
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
         color_grading_pass_depend_on_tone_mapping_pass.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
-        VkSubpassDependency& fxaa_pass_depend_on_color_grading_pass = dependencies[5];
-        fxaa_pass_depend_on_color_grading_pass.srcSubpass           = _main_camera_subpass_color_grading;
-        fxaa_pass_depend_on_color_grading_pass.dstSubpass           = _main_camera_subpass_fxaa;
-        fxaa_pass_depend_on_color_grading_pass.srcStageMask =
+        // vignette
+        VkSubpassDependency& vignette_pass_depend_on_color_grading_pass = dependencies[5];
+        vignette_pass_depend_on_color_grading_pass.srcSubpass           = _main_camera_subpass_color_grading;
+        vignette_pass_depend_on_color_grading_pass.dstSubpass           = _main_camera_subpass_vignette;
+        vignette_pass_depend_on_color_grading_pass.srcStageMask =
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        fxaa_pass_depend_on_color_grading_pass.dstStageMask =
+        vignette_pass_depend_on_color_grading_pass.dstStageMask =
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        fxaa_pass_depend_on_color_grading_pass.srcAccessMask =
+        vignette_pass_depend_on_color_grading_pass.srcAccessMask =
             VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        fxaa_pass_depend_on_color_grading_pass.dstAccessMask =
+        vignette_pass_depend_on_color_grading_pass.dstAccessMask =
+            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+        vignette_pass_depend_on_color_grading_pass.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+        VkSubpassDependency& fxaa_pass_depend_on_vignette_pass = dependencies[6];
+        fxaa_pass_depend_on_vignette_pass.srcSubpass           = _main_camera_subpass_vignette;
+        fxaa_pass_depend_on_vignette_pass.dstSubpass           = _main_camera_subpass_fxaa;
+        fxaa_pass_depend_on_vignette_pass.srcStageMask =
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        fxaa_pass_depend_on_vignette_pass.dstStageMask =
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        fxaa_pass_depend_on_vignette_pass.srcAccessMask =
+            VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        fxaa_pass_depend_on_vignette_pass.dstAccessMask =
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
 
-        VkSubpassDependency& ui_pass_depend_on_fxaa_pass = dependencies[6];
+        VkSubpassDependency& ui_pass_depend_on_fxaa_pass = dependencies[7];
         ui_pass_depend_on_fxaa_pass.srcSubpass           = _main_camera_subpass_fxaa;
         ui_pass_depend_on_fxaa_pass.dstSubpass           = _main_camera_subpass_ui;
         ui_pass_depend_on_fxaa_pass.srcStageMask =
@@ -501,7 +543,7 @@ namespace Piccolo
         ui_pass_depend_on_fxaa_pass.dstAccessMask   = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
         ui_pass_depend_on_fxaa_pass.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
-        VkSubpassDependency& combine_ui_pass_depend_on_ui_pass = dependencies[7];
+        VkSubpassDependency& combine_ui_pass_depend_on_ui_pass = dependencies[8];
         combine_ui_pass_depend_on_ui_pass.srcSubpass           = _main_camera_subpass_ui;
         combine_ui_pass_depend_on_ui_pass.dstSubpass           = _main_camera_subpass_combine_ui;
         combine_ui_pass_depend_on_ui_pass.srcStageMask =
@@ -2196,6 +2238,7 @@ namespace Piccolo
     }
 
     void MainCameraPass::draw(ColorGradingPass& color_grading_pass,
+                              VignettePass&     vignette_pass,
                               FXAAPass&         fxaa_pass,
                               ToneMappingPass&  tone_mapping_pass,
                               UIPass&           ui_pass,
@@ -2283,6 +2326,10 @@ namespace Piccolo
 
         m_vulkan_rhi->m_vk_cmd_next_subpass(m_vulkan_rhi->m_current_command_buffer, VK_SUBPASS_CONTENTS_INLINE);
 
+        vignette_pass.draw();
+
+        m_vulkan_rhi->m_vk_cmd_next_subpass(m_vulkan_rhi->m_current_command_buffer, VK_SUBPASS_CONTENTS_INLINE);
+
         if (m_enable_fxaa) fxaa_pass.draw();
 
         m_vulkan_rhi->m_vk_cmd_next_subpass(m_vulkan_rhi->m_current_command_buffer, VK_SUBPASS_CONTENTS_INLINE);
@@ -2319,6 +2366,7 @@ namespace Piccolo
     }
 
     void MainCameraPass::drawForward(ColorGradingPass& color_grading_pass,
+                                     VignettePass&     vignette_pass,
                                      FXAAPass&         fxaa_pass,
                                      ToneMappingPass&  tone_mapping_pass,
                                      UIPass&           ui_pass,
@@ -2375,6 +2423,10 @@ namespace Piccolo
         m_vulkan_rhi->m_vk_cmd_next_subpass(m_vulkan_rhi->m_current_command_buffer, VK_SUBPASS_CONTENTS_INLINE);
 
         color_grading_pass.draw();
+
+        m_vulkan_rhi->m_vk_cmd_next_subpass(m_vulkan_rhi->m_current_command_buffer, VK_SUBPASS_CONTENTS_INLINE);
+
+        vignette_pass.draw();
 
         m_vulkan_rhi->m_vk_cmd_next_subpass(m_vulkan_rhi->m_current_command_buffer, VK_SUBPASS_CONTENTS_INLINE);
 

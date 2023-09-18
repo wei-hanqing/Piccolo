@@ -13,6 +13,7 @@
 #include "runtime/function/global/global_context.h"
 #include "runtime/function/input/input_system.h"
 #include "runtime/function/physics/physics_scene.h"
+#include "motor_component.h"
 
 namespace Piccolo
 {
@@ -222,4 +223,9 @@ namespace Piccolo
         m_target_position = final_position;
     }
 
+    void MotorComponent::getOffStuckDead() 
+    {
+        LOG_INFO("SOme get off stuck dead logic");
+    }
 } // namespace Piccolo
+
